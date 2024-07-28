@@ -9,6 +9,7 @@ end
 
 local inductionData = {}
 local reactorData = {}
+local reactorActive = false
 
 -- Function to display data on a monitor with text wrapping
 local function displayData()
@@ -24,10 +25,12 @@ local function displayData()
         error("No monitor found.")
     end
 
+    -- Monitors Size Control
     local width, height = monitor.getSize()
     monitor.setBackgroundColor(colors.black)
     monitor.setTextColor(colors.white)
 
+    -- Apenas desenho de fora, pode ser removido
     local function drawBorder()
         for x = 1, width do
             monitor.setCursorPos(x, 1)
@@ -74,6 +77,34 @@ local function displayData()
         monitor.setBackgroundColor(colors.black)
     end
 
+    local function drawControlPanel()
+        local panelX = width - 10
+        monitor.setCursorPos(panelX, 2)
+        monitor.write("Control Panel")
+
+        -- Reactor Control Button
+        monitor.setCursorPos(panelX, 4)
+        monitor.write("Reactor: " .. (reactorActive and "On" or "Off"))
+
+        -- Waste Bar
+        local wastePercent = (reactorData["Waste Amount"] or 0) / (reactorData["Max Waste"] or 1) * 100
+        monitor.setCursorPos(panelX, 6)
+        monitor.write("Waste: " .. string.format("%.2f", wastePercent) .. "%")
+
+        for y = 7, height - 1 do
+            local barHeight = height - 8
+            local fillHeight = math.floor(barHeight * (wastePercent / 100))
+            monitor.setCursorPos(panelX, y)
+            if y <= height - 1 - fillHeight then
+                monitor.write("|")
+            else
+                monitor.setBackgroundColor(colors.red)
+                monitor.write("|")
+                monitor.setBackgroundColor(colors.green)
+            end
+        end
+    end
+
     while true do
         monitor.clear()
         drawBorder()
@@ -115,6 +146,9 @@ local function displayData()
             y = y + 1
         end
 
+        -- Display Control Panel
+        drawControlPanel()
+
         sleep(1)
     end
 end
@@ -129,9 +163,22 @@ local function handleData(senderId, message, protocol)
     end
 end
 
+-- Function to handle monitor touch events
+local function handleTouch()
+    while true do
+        local event, side, x, y = os.pullEvent("monitor_touch")
+        if x >= width - 10 and x <= width - 1 then
+            if y == 4 then
+                reactorActive = not reactorActive
+                rednet.broadcast(reactorActive and "activate" or "deactivate", "reactorControl")
+            end
+        end
+    end
+end
+
 parallel.waitForAll(displayData, function()
     while true do
         local senderId, message, protocol = rednet.receive()
         handleData(senderId, message, protocol)
     end
-end)
+end, handleTouch)
